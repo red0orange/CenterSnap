@@ -35,6 +35,14 @@ If you find this repository useful, please consider citing:
   year={2022},
   url={https://arxiv.org/abs/2203.01929},
 }
+
+@inproceedings{irshad2022shapo,
+  title={ShAPO: Implicit Representations for Multi Object Shape Appearance and Pose Optimization},
+  author={Muhammad Zubair Irshad and Sergey Zakharov and Rares Ambrus and Thomas Kollar and Zsolt Kira and Adrien Gaidon},
+  journal={European Conference on Computer Vision (ECCV)},
+  year={2022},
+  url={https://arxiv.org/abs/2207.13691},
+}
 ```
 
 ### Contents
@@ -156,6 +164,9 @@ torchvision==0.8.2
 
 ## Acknowledgments
 * This code is built upon the implementation from [SimNet](https://github.com/ToyotaResearchInstitute/simnet)
+
+## Related Work
+* [ShAPO:tophat:: Implicit Representations for Multi Object Shape Appearance and Pose Optimization, ECCV, 2022](https://zubair-irshad.github.io/projects/ShAPO.html)
 
 ## Licenses
 * The source code is released under the [MIT license](https://opensource.org/licenses/MIT).
