@@ -18,11 +18,16 @@ from utils.nocs_utils import load_img_NOCS, create_input_norm
 from utils.viz_utils import depth2inv, viz_inv_depth
 from utils.transform_utils import (
     get_gt_pointclouds,
+    get_scale_pointclouds,
     transform_coordinates_3d,
     calculate_2d_projections,
 )
 from utils.transform_utils import project
 from utils.viz_utils import save_projected_points, draw_bboxes, line_set_mesh
+
+import matplotlib.pyplot as plt
+
+plt.switch_backend("agg")
 
 import time
 
@@ -37,6 +42,7 @@ def get_auto_encoder(model_path):
     return ae
 
 
+# @note Inference Main
 def inference(
     hparams,
     data_dir,
@@ -51,7 +57,8 @@ def inference(
     data_path = (
         open(os.path.join(data_dir, "Real", "test_list_subset.txt")).read().splitlines()
     )
-    _CAMERA = camera.NOCS_Real()
+    # _CAMERA = camera.NOCS_Real()
+    _CAMERA = camera.My_Realsense_Camera()
     min_confidence = 0.50
 
     for i, img_path in enumerate(data_path):
@@ -61,6 +68,7 @@ def inference(
             continue
         depth_full_path = img_full_path + "_depth.png"
         img_vis = cv2.imread(color_path)
+        # left_linear是RGB，depth是actual_depth / 255，应该只是为了归一化
         left_linear, depth, actual_depth = load_img_NOCS(color_path, depth_full_path)
         input = create_input_norm(left_linear, depth)
         input = input[None, :, :, :]
@@ -68,6 +76,7 @@ def inference(
             input = input.to(torch.device("cuda:0"))
         with torch.no_grad():
             _, _, _, pose_output = model.forward(input)
+            # @note type(pose_output) == <class 'simnet.lib.net.post_processing.abs_pose_outputs.OBBOutput'>
             (
                 latent_emb_outputs,
                 abs_pose_outputs,
@@ -77,6 +86,10 @@ def inference(
             ) = pose_output.compute_pointclouds_and_poses(
                 min_confidence, is_target=False
             )
+
+        ########################################################
+        # 上面已经得到了Predict Objects的Pose list、Latent emb outputs，下面再通过auto encoder恢复出来即可
+        ########################################################
 
         auto_encoder_path = os.path.join(
             data_dir, "ae_checkpoints", "model_50_nocs.pth"
@@ -88,7 +101,7 @@ def inference(
         depth_vis = viz_inv_depth(depth_vis)
         depth_vis = depth_vis * 255.0
         cv2.imwrite(str(output_path / f"{i}_depth_vis.png"), np.copy(depth_vis))
-        write_pcd = False
+        write_pcd = True
         rotated_pcds = []
         points_2d = []
         box_obb = []
@@ -96,34 +109,48 @@ def inference(
 
         for j in range(len(latent_emb_outputs)):
             emb = latent_emb_outputs[j]
-            emb = latent_emb_outputs[j]
             emb = torch.FloatTensor(emb).unsqueeze(0)
             emb = emb.cuda()
-            _, shape_out = ae(None, emb)
-            shape_out = shape_out.cpu().detach().numpy()[0]
+            _, ori_pc = ae(None, emb)
+            ori_pc = ori_pc.cpu().detach().numpy()[0]
 
             rotated_pc, rotated_box, _ = get_gt_pointclouds(
-                abs_pose_outputs[j], shape_out, camera_model=_CAMERA
+                abs_pose_outputs[j], ori_pc, camera_model=_CAMERA
             )
+
+            ori_pcd = o3d.geometry.PointCloud()
+            scale_pc = get_scale_pointclouds(abs_pose_outputs[j], ori_pc)
+            ori_pcd.points = o3d.utility.Vector3dVector(scale_pc)
+            filename_ori = str(output_path) + "/pcd" + str(i) + str(j) + ".ply"
+
             pcd = o3d.geometry.PointCloud()
             pcd.points = o3d.utility.Vector3dVector(rotated_pc)
             filename_rotated = (
                 str(output_path) + "/pcd_rotated" + str(i) + str(j) + ".ply"
             )
             if write_pcd:
+                o3d.io.write_point_cloud(filename_ori, ori_pcd)
                 o3d.io.write_point_cloud(filename_rotated, pcd)
             else:
                 rotated_pcds.append(pcd)
 
+            # @note type(mesh_frame) == <class 'open3d.cuda.pybind.geometry.TriangleMesh'>
             mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
                 size=0.1, origin=[0, 0, 0]
             )
             T = abs_pose_outputs[j].camera_T_object
             mesh_frame = mesh_frame.transform(T)
+
+            # o3d.io.write_triangle_mesh(
+            #     str(output_path) + "/pcd_rotated" + str(i) + str(j) + ".obj", mesh_frame
+            # )
+
             rotated_pcds.append(mesh_frame)
             cylinder_segments = line_set_mesh(rotated_box)
             for k in range(len(cylinder_segments)):
                 rotated_pcds.append(cylinder_segments[k])
+
+            # o3d.visualization.draw_geometries(cylinder_segments)
 
             points_mesh = camera.convert_points_to_homopoints(rotated_pc.T)
             points_2d_mesh = project(_CAMERA.K_matrix, points_mesh)

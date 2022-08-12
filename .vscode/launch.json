@@ -1,0 +1,59 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Python: My Inference",
+            "type": "python",
+            "request": "launch",
+            "program": "inference/my_inference.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": true,
+            "args": [
+                "@configs/net_config.txt",
+                "--data_dir",
+                "/home/red0orange/github_projects/CenterSnap/nocs_test_subset",
+                "--checkpoint",
+                "/home/red0orange/github_projects/CenterSnap/nocs_test_subset/checkpoint/centersnap_real.ckpt"
+            ],
+            "env": {
+                "PYTHONPATH": "/home/red0orange/github_projects/CenterSnap:/home/red0orange/github_projects/CenterSnap/export",
+                "OPENBLAS_NUM_THREADS": "1",
+                "PYOPENGL_PLATFORM": "egl",
+                "CUDA_VISIBLE_DEVICES": "0"
+            }
+        },
+        {
+            "name": "Python: Ori Inference",
+            "type": "python",
+            "request": "launch",
+            "program": "inference/inference_real.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": true,
+            "args": [
+                "@configs/net_config.txt",
+                "--data_dir",
+                "/home/red0orange/github_projects/CenterSnap/nocs_test_subset",
+                "--checkpoint",
+                "/home/red0orange/github_projects/CenterSnap/nocs_test_subset/checkpoint/centersnap_real.ckpt"
+            ],
+            "env": {
+                "PYTHONPATH": "/home/red0orange/github_projects/CenterSnap:/home/red0orange/github_projects/CenterSnap/export",
+                "OPENBLAS_NUM_THREADS": "1",
+                "PYOPENGL_PLATFORM": "egl"
+            }
+        }
+    ]
+}
