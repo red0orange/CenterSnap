@@ -1,6 +1,7 @@
 import argparse
 import pathlib
 import cv2
+import pickle
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -27,9 +28,43 @@ from utils.viz_utils import save_projected_points, draw_bboxes, line_set_mesh
 
 import matplotlib.pyplot as plt
 
+import math
+
 plt.switch_backend("agg")
 
 import time
+
+
+def quaternion_from_matrix(matrix):
+    """Return quaternion from rotation matrix.
+
+    >>> R = rotation_matrix(0.123, (1, 2, 3))
+    >>> q = quaternion_from_matrix(R)
+    >>> numpy.allclose(q, [0.0164262, 0.0328524, 0.0492786, 0.9981095])
+    True
+
+    """
+    q = np.empty((4,), dtype=np.float64)
+    M = np.array(matrix, dtype=np.float64, copy=False)[:4, :4]
+    t = np.trace(M)
+    if t > M[3, 3]:
+        q[3] = t
+        q[2] = M[1, 0] - M[0, 1]
+        q[1] = M[0, 2] - M[2, 0]
+        q[0] = M[2, 1] - M[1, 2]
+    else:
+        i, j, k = 0, 1, 2
+        if M[1, 1] > M[0, 0]:
+            i, j, k = 1, 2, 0
+        if M[2, 2] > M[i, i]:
+            i, j, k = 2, 0, 1
+        t = M[i, i] - (M[j, j] + M[k, k]) + M[3, 3]
+        q[i] = t
+        q[j] = M[i, j] + M[j, i]
+        q[k] = M[k, i] + M[i, k]
+        q[3] = M[k, j] - M[j, k]
+    q *= 0.5 / math.sqrt(t * M[3, 3])
+    return q
 
 
 def get_auto_encoder(model_path):
@@ -101,11 +136,20 @@ def inference(
         depth_vis = viz_inv_depth(depth_vis)
         depth_vis = depth_vis * 255.0
         cv2.imwrite(str(output_path / f"{i}_depth_vis.png"), np.copy(depth_vis))
-        write_pcd = True
+        write_pcd = False
         rotated_pcds = []
         points_2d = []
         box_obb = []
         axes = []
+
+        # @note my result init
+        save_dir = "/home/red0orange/github_projects/GraspFramework/src/my_franka_sim_to_real/object_models/"
+        my_result_dict = {
+            "class_ids": [],
+            "instance_ids": [],
+            "poses": [],
+            "model_names": [],
+        }
 
         for j in range(len(latent_emb_outputs)):
             emb = latent_emb_outputs[j]
@@ -118,10 +162,16 @@ def inference(
                 abs_pose_outputs[j], ori_pc, camera_model=_CAMERA
             )
 
+            matrix_homo = abs_pose_outputs[j].camera_T_object
+            position = list(matrix_homo[0:3, -1])
+            quaternion = list(quaternion_from_matrix(matrix_homo))
+            pose = position + quaternion
+
             ori_pcd = o3d.geometry.PointCloud()
             scale_pc = get_scale_pointclouds(abs_pose_outputs[j], ori_pc)
             ori_pcd.points = o3d.utility.Vector3dVector(scale_pc)
-            filename_ori = str(output_path) + "/pcd" + str(i) + str(j) + ".ply"
+            model_name = "pcd_" + str(j) + ".ply"
+            o3d.io.write_point_cloud(os.path.join(save_dir, model_name), ori_pcd)
 
             pcd = o3d.geometry.PointCloud()
             pcd.points = o3d.utility.Vector3dVector(rotated_pc)
@@ -129,7 +179,6 @@ def inference(
                 str(output_path) + "/pcd_rotated" + str(i) + str(j) + ".ply"
             )
             if write_pcd:
-                o3d.io.write_point_cloud(filename_ori, ori_pcd)
                 o3d.io.write_point_cloud(filename_rotated, pcd)
             else:
                 rotated_pcds.append(pcd)
@@ -170,6 +219,15 @@ def inference(
                 transformed_axes, _CAMERA.K_matrix[:3, :3]
             )
             axes.append(projected_axes)
+
+            my_result_dict["class_ids"].append(0)
+            my_result_dict["instance_ids"].append(0)
+            my_result_dict["model_names"].append(model_name)
+            my_result_dict["poses"].append(pose)
+
+        # @note my result write
+        with open(os.path.join(save_dir, "single_image_result.pkl"), "wb") as f:
+            pickle.dump(my_result_dict, f)
 
         if not write_pcd:
             o3d.visualization.draw_geometries(rotated_pcds)
